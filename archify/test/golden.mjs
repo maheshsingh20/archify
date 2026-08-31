@@ -98,6 +98,33 @@ for (const [mode, input, golden] of GOLDEN) {
 }
 
 // ---------------------------------------------------------------------------
+// issue #81 regression: lane-ownership bars must appear even when the workflow
+// has NO `phases` array — derived solely from nodes[].lane.
+console.log('lane-only ownership cue (issue #81 regression)');
+{
+  const fixtureInput = path.join(skillRoot, 'test/fixtures/lane-ownership-no-phases.workflow.json');
+  const fixtureGolden = path.join(skillRoot, 'test/fixtures/lane-ownership-no-phases.workflow.html');
+  const out = path.join(tmp, 'lane-ownership-no-phases.workflow.html');
+  try {
+    render('workflow', fixtureInput, out);
+    const fresh = fs.readFileSync(out, 'utf8');
+    // Must contain one lane band per lane, zero phase bands.
+    const laneBands = (fresh.match(/data-lane-band=/g) || []).length;
+    const phaseBands = (fresh.match(/data-phase-band=/g) || []).length;
+    check('lane-only: data-lane-band present for each lane', laneBands === 3,
+      `expected 3 data-lane-band elements, got ${laneBands}`);
+    check('lane-only: no data-phase-band without phases field', phaseBands === 0,
+      `expected 0 data-phase-band elements, got ${phaseBands}`);
+    // Golden file check (committed HTML must match fresh render).
+    const golden = fs.readFileSync(fixtureGolden, 'utf8');
+    check('lane-only: golden matches fresh render', normalizeNewlines(fresh) === normalizeNewlines(golden),
+      'fresh render differs from test/fixtures/lane-ownership-no-phases.workflow.html — re-render and commit');
+  } catch (err) {
+    check('lane-only: render succeeds', false, String(err.stderr || err.message).slice(0, 300));
+  }
+}
+
+// ---------------------------------------------------------------------------
 console.log('schema enforcement (invalid JSON must fail with a path-prefixed message)');
 
 function expectFailure(name, mode, mutate, expectInMessage) {

@@ -580,32 +580,55 @@ function renderLane(lane, index) {
 }
 
 // Map from variant name to the CSS custom-property used for its stroke colour.
-// These are the same variables that the edge/arrow palette uses so the band
-// colour is always in sync with the rest of the diagram.
+// Map from phase variant name to the CSS custom-property for its stroke colour.
+// Matches the edge/arrow palette so colours stay consistent throughout the diagram.
 const PHASE_BAND_COLOR = {
   emphasis: 'var(--backend-stroke)',
   security: 'var(--security-stroke)',
   dashed: 'var(--messagebus-stroke)',
 };
 
+// Cycle of CSS custom-property colours used for lane-derived ownership bands
+// when no explicit `phases` array is present.  Uses the same semantic stroke
+// variables already defined in every theme.
+const LANE_BAND_COLORS = [
+  'var(--frontend-stroke)',
+  'var(--backend-stroke)',
+  'var(--security-stroke)',
+  'var(--messagebus-stroke)',
+  'var(--database-stroke)',
+  'var(--cloud-stroke)',
+];
+
 /**
- * Render a full-height, low-opacity column band for `phase` that spans every
- * lane row.  The band is drawn *after* the swimlane rects so it sits inside
- * the diagram content area and is visible at rest — no hover required.
+ * Render lane-ownership bars — the primary static cue for issue #81.
  *
- * Acceptance criteria addressed:
- *  - Phase membership is readable on a static first read (band + top label).
- *  - Works in both light and dark themes (uses CSS custom properties).
- *  - Export-safe: the band is pure SVG geometry with no JavaScript dependency.
- *  - Does not add text inside individual nodes.
- *  - Existing workflow JSON stays valid — `phases` is unchanged.
+ * Derived from the `lane` field that every node already carries, so this
+ * works for ALL workflows regardless of whether a `phases` array is defined.
+ * Each lane row gets a 3 px left-side accent bar coloured by lane index,
+ * giving each row a visually distinct identity at rest without requiring
+ * authors to add a second grouping model.
+ */
+function renderLaneOwnershipBars() {
+  return asArray(workflow.lanes).map((lane, index) => {
+    const y = layout.laneY + index * (layout.laneH + layout.laneGap);
+    const color = LANE_BAND_COLORS[index % LANE_BAND_COLORS.length];
+    return `        <rect data-lane-band="${esc(lane.id)}" x="${layout.laneX}" y="${y}" width="3" height="${layout.laneH}" fill="${color}" fill-opacity="0.9"/>`;
+  }).join('\n');
+}
+
+/**
+ * When the author has also defined a `phases` array, additionally render a
+ * low-opacity column band for each phase spanning every lane row.
  */
 function renderPhaseBand(phase) {
   const span = spanForCols(phase.fromCol, phase.toCol, 46);
-  const bandY = layout.laneY;
-  const bandH = lastLaneBottom() - layout.laneY;
   const color = PHASE_BAND_COLOR[phase.variant] || 'var(--text-dim)';
-  return `        <rect data-phase-band="${phase.id}" x="${span.x}" y="${bandY}" width="${span.width}" height="${bandH}" rx="6" fill="${color}" fill-opacity="0.055" stroke="${color}" stroke-opacity="0.18" stroke-width="1" stroke-dasharray="4 3"/>`;
+  // One rect per lane row — avoids tinting the inter-lane routing gaps.
+  return asArray(workflow.lanes).map((_lane, index) => {
+    const y = layout.laneY + index * (layout.laneH + layout.laneGap);
+    return `        <rect data-phase-band="${esc(phase.id)}" x="${span.x}" y="${y}" width="${span.width}" height="${layout.laneH}" rx="6" fill="${color}" fill-opacity="0.055" stroke="${color}" stroke-opacity="0.18" stroke-width="1" stroke-dasharray="4 3"/>`;
+  }).join('\n');
 }
 
 function renderPhase(phase) {
@@ -711,7 +734,10 @@ ${renderDefinitions()}
         <!-- Swimlanes -->
 ${workflow.lanes.map(renderLane).join('\n\n')}
 
-        <!-- Phase column bands (full-height tint, visible at rest) -->
+        <!-- Lane ownership bars (visible at rest, derived from nodes[].lane — no phases needed) -->
+${renderLaneOwnershipBars()}
+
+        <!-- Phase column bands (additional cue when phases array is present) -->
 ${asArray(workflow.phases).map(renderPhaseBand).join('\n')}
 
         <!-- Phase headers -->
